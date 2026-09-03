@@ -2,8 +2,8 @@ import 'dotenv/config';
 import cron from 'node-cron';
 import { createDailyStandupThread } from './standup.js';
 
-// Mặc định: Đúng 12:00 đêm (00:00) mỗi ngày ('0 0 * * *')
-const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 0 * * *';
+// Mặc định: Đúng 12:00 trưa mỗi ngày ('0 12 * * *')
+const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 12 * * *';
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Ho_Chi_Minh';
 
 console.log('--------------------------------------------------');
