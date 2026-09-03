@@ -1,0 +1,38 @@
+name: Daily Standup Trigger
+
+on:
+  schedule:
+    # 17:00 UTC tương ứng 00:00 (12h đêm) giờ Việt Nam (UTC+7)
+    - cron: '0 17 * * *'
+  # Cho phép bấm nút "Run workflow" để test ngay lập tức trên GitHub
+  workflow_dispatch:
+
+jobs:
+  run-standup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -d "discord-daily-standup" ]; then
+            cd discord-daily-standup
+          fi
+          npm ci || npm install
+
+      - name: Run daily standup script
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID || '1504851139441459241' }}
+        run: |
+          if [ -d "discord-daily-standup" ]; then
+            cd discord-daily-standup
+          fi
+          npm run test-run
+

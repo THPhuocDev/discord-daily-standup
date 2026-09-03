@@ -1,0 +1,27 @@
+{
+  "name": "discord-daily-standup",
+  "version": "1.0.0",
+  "description": "Tool tự động tạo Discord Thread Daily Stand-up đúng 12h trưa mỗi ngày",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "test-run": "tsx src/standup.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["discord", "cron", "standup", "typescript", "nodejs"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.19",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
+
