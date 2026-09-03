@@ -30,6 +30,7 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID || '1504851139441459241' }}
+          GUILD_ID: ${{ secrets.GUILD_ID || '1504851139005517995' }}
         run: |
           if [ -d "discord-daily-standup" ]; then
             cd discord-daily-standup
