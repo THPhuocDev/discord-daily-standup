@@ -2,6 +2,8 @@ name: Daily Standup Trigger
 
 on:
   schedule:
+    # 17:00 UTC tương ứng 00:00 (12h đêm) giờ Việt Nam (UTC+7)
+    - cron: '0 17 * * *'
     # 17:05 UTC = 00:05 đêm giờ Việt Nam (Lịch chính - né phút :00 để chạy ngay tức khắc không bị nghẽn)
     - cron: '5 17 * * *'
     # 17:30 UTC = 00:30 đêm giờ Việt Nam (Lịch dự phòng - nếu 00:05 đã tạo rồi thì tự động bỏ qua)

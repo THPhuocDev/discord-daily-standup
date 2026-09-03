@@ -35,20 +35,27 @@ export async function createDailyStandupThread(): Promise<void> {
   }
 
   const threadTitle = getFormattedDate();
+  console.log(`[Stand-up] Bắt đầu tạo thread daily: "${threadTitle}" tại channel ${channelId}...`);
   console.log(`[Stand-up] Bắt đầu kiểm tra và tạo thread daily: "${threadTitle}" tại channel ${channelId}...`);
 
   // 0. Kiểm tra xem thread ngày hôm nay đã tồn tại chưa (Idempotency - Tránh tạo trùng lặp)
   try {
-    const activeRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/threads/active`, {
+    const activeRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
       headers: { Authorization: `Bot ${botToken}` },
     });
     if (activeRes.ok) {
-      const activeData = (await activeRes.json()) as { threads?: Array<{ name: string; id: string }> };
-      const existing = activeData.threads?.find((t) => t.name === threadTitle);
+      const activeData = (await activeRes.json()) as {
+        threads?: Array<{ name: string; id: string; parent_id?: string }>;
+      };
+      const existing = activeData.threads?.find(
+        (t) => t.name === threadTitle && (!t.parent_id || t.parent_id === channelId)
+      );
       if (existing) {
         console.log(`[Stand-up] ℹ️ Thread "${threadTitle}" ngày hôm nay đã được tạo rồi (ID: ${existing.id}). Không cần tạo lại!`);
         return;
       }
+    } else {
+      console.warn(`[Stand-up] Không kiểm tra được active threads (HTTP ${activeRes.status})`);
     }
   } catch (err) {
     console.warn('[Stand-up] Lỗi khi kiểm tra active threads:', err);
