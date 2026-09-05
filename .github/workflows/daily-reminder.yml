@@ -1,19 +1,13 @@
-name: Daily Standup Trigger
+name: Daily Standup 9PM Reminder
 
 on:
   schedule:
-    # 17:05 UTC = 00:05 đêm giờ Việt Nam (Lịch chính - né phút :00 để chạy ngay tức khắc không bị nghẽn)
-    - cron: '5 17 * * *'
-    # 17:30 UTC = 00:30 đêm giờ Việt Nam (Lịch dự phòng - nếu 00:05 đã tạo rồi thì tự động bỏ qua)
-    - cron: '30 17 * * *'
-    # 18:05 UTC = 01:05 sáng giờ Việt Nam (UTC+7)
-    # Đặt duy nhất 1 lịch (né phút :00 để runner GitHub Actions chạy ngay không bị nghẽn queue)
-    - cron: '5 18 * * *'
-  # Cho phép bấm nút "Run workflow" để test ngay lập tức trên GitHub
+    # 14:05 UTC = 21:05 tối giờ Việt Nam (né phút :00 để không bị nghẽn runner)
+    - cron: '5 14 * * *'
   workflow_dispatch:
 
 jobs:
-  run-standup:
+  run-reminder:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -31,7 +25,7 @@ jobs:
           fi
           npm ci || npm install
 
-      - name: Run daily standup script
+      - name: Run 9PM reminder
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID || '1504851139441459241' }}
@@ -40,5 +34,4 @@ jobs:
           if [ -d "discord-daily-standup" ]; then
             cd discord-daily-standup
           fi
-          npm run test-run
-
+          npm run test-reminder
