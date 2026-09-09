@@ -24,6 +24,23 @@ export function getFormattedDate(): string {
   return formatted.replace(/\//g, '-');
 }
 
+/**
+ * Lấy ngày Thứ Hai tiếp theo theo định dạng DD/MM theo múi giờ Việt Nam
+ */
+export function getNextMondayFormatted(): string {
+  const now = new Date();
+  const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  const currentDay = vnNow.getDay(); // 0 = Chủ nhật, 1 = Thứ 2, ..., 6 = Thứ 7
+  // Tính số ngày đến Thứ Hai tiếp theo (nếu Thứ 7 là +2 ngày, Chủ nhật là +1 ngày, các ngày khác tính đến Thứ Hai kế tiếp)
+  const daysUntilMonday = currentDay === 1 ? 7 : ((8 - currentDay) % 7);
+  vnNow.setDate(vnNow.getDate() + daysUntilMonday);
+
+  const day = String(vnNow.getDate()).padStart(2, '0');
+  const month = String(vnNow.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}`;
+}
+
+
 interface DiscordMember {
   user: {
     id: string;
@@ -308,7 +325,7 @@ export async function remindStandupSubmission(): Promise<void> {
 
   // 3. Nội dung tin nhắn nhắc nhở lúc 21:00
   const reminderContent = [
-    `⏰ **REMINDER: ĐÃ ĐẾN 21:00 TỐI RỒI!**`,
+    `⏰ **REMINDER: ĐÃ ĐẾN TỐI RỒI!**`,
     `${mentionText}`,
     `Anh em nào chưa hoàn thành daily stand-up hôm nay thì tranh thủ vào thread này nộp bài trước khi hết ngày nhé! 🔥`,
   ].join('\n');
@@ -333,11 +350,174 @@ export async function remindStandupSubmission(): Promise<void> {
 }
 
 // Nếu chạy trực tiếp file này (ví dụ `npm run test-run` hoặc `npm run test-reminder`)
+/**
+ * Tạo Thread và gửi thông báo nhắc nhở nộp Báo cáo tuần (Weekly Report) vào Thứ 7
+ */
+export async function remindWeeklyReport(): Promise<void> {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  const channelId = process.env.CHANNEL_ID || '1504851139441459241';
+  let guildId = process.env.GUILD_ID || '1504851139005517995';
+
+  if (!botToken) {
+    throw new Error('Thiếu DISCORD_BOT_TOKEN trong file .env!');
+  }
+
+  const dateStr = getFormattedDate();
+  const threadTitle = `Weekly Report — ${dateStr}`;
+  const nextMondayStr = getNextMondayFormatted();
+
+  console.log(`[Weekly-Report] Bắt đầu kiểm tra và tạo thread: "${threadTitle}" tại channel ${channelId}...`);
+
+  // 0. Kiểm tra xem thread tuần này đã tồn tại chưa (Idempotency)
+  try {
+    if (!guildId) {
+      const chRes = await fetch(`https://discord.com/api/v10/channels/${channelId}`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      });
+      if (chRes.ok) {
+        const chData = (await chRes.json()) as { guild_id?: string };
+        if (chData.guild_id) {
+          guildId = chData.guild_id;
+        }
+      }
+    }
+
+    let existingThread: { id: string; name: string } | undefined;
+
+    if (guildId) {
+      const activeRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      });
+      if (activeRes.ok) {
+        const activeData = (await activeRes.json()) as {
+          threads?: Array<{ id: string; name: string; parent_id?: string }>;
+        };
+        existingThread = activeData.threads?.find(
+          (t) => t.name === threadTitle && (!t.parent_id || t.parent_id === channelId)
+        );
+      }
+    }
+
+    if (!existingThread) {
+      const archivedRes = await fetch(
+        `https://discord.com/api/v10/channels/${channelId}/threads/archived/public?limit=20`,
+        {
+          headers: { Authorization: `Bot ${botToken}` },
+        }
+      );
+      if (archivedRes.ok) {
+        const archivedData = (await archivedRes.json()) as {
+          threads?: Array<{ id: string; name: string }>;
+        };
+        existingThread = archivedData.threads?.find((t) => t.name === threadTitle);
+      }
+    }
+
+    if (existingThread) {
+      console.log(
+        `[Weekly-Report] ℹ️ Thread "${threadTitle}" đã được tạo rồi (ID: ${existingThread.id}). Không cần tạo lại!`
+      );
+      return;
+    }
+  } catch (err) {
+    console.warn('[Weekly-Report] Lỗi khi kiểm tra thread trùng lặp:', err);
+  }
+
+  // 1. Tạo Thread mới trong Text Channel
+  const threadResponse = await fetch(`https://discord.com/api/v10/channels/${channelId}/threads`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bot ${botToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: threadTitle,
+      auto_archive_duration: 1440,
+      type: 11,
+    }),
+  });
+
+  if (!threadResponse.ok) {
+    const errText = await threadResponse.text();
+    throw new Error(`Tạo thread Weekly Report thất bại (HTTP ${threadResponse.status}): ${errText}`);
+  }
+
+  const threadData = (await threadResponse.json()) as CreateThreadResponse;
+  const threadId = threadData.id;
+  console.log(`[Weekly-Report] ✅ Đã tạo thread thành công! Thread ID: ${threadId}`);
+
+  // 2. Lấy danh sách mention mọi người (trừ bot và longnx)
+  const mentionText = await getMentionsExcludingLongnx(botToken, guildId, channelId);
+
+  // 3. Gửi tin nhắn template vào trong Thread vừa tạo
+  const reminderMessage = [
+    `📢 **QUY TRÌNH BÁO CÁO TUẦN (WEEKLY REPORT)**`,
+    `${mentionText} Chào cả nhà! Hôm nay thứ 7, mọi người hoàn thiện Báo cáo tuần (Weekly Report) để chuẩn bị cho buổi họp vào **thứ Hai (${nextMondayStr})** nhé 🚀`,
+    '',
+    '⚠️ **LƯU Ý QUAN TRỌNG:**',
+    '> Báo cáo phải **thể hiện rõ phần Overview đối chiếu kết quả đạt được so với kế hoạch (`Recover vs. Master Plan`)**, **không chỉ báo cáo hành động đơn thuần**.',
+    '',
+    '**Mẫu Weekly Report chuẩn:**',
+    '```markdown',
+    '# BÁO CÁO TUẦN — [HỌ VÀ TÊN]',
+    '',
+    '1. OVERVIEW TIẾN ĐỘ (Recover vs. Master Plan):',
+    '- Kế hoạch cam kết ban đầu (Master Plan): [Mục tiêu đề ra tuần qua]',
+    '- Kết quả thực tế đạt được: [Đã hoàn thành những gì, tỉ lệ %]',
+    '- Đánh giá chênh lệch: [On-track / Chậm tiến độ / Vượt kế hoạch]',
+    '- Phương án bù tiến độ (Recover Plan nếu chậm): [Hành động cụ thể, timeline bù]',
+    '',
+    '2. CHI TIẾT CÔNG VIỆC ĐÃ THỰC HIỆN TRONG TUẦN:',
+    '- [Công việc 1]: Kết quả / link PR / tài liệu...',
+    '- [Công việc 2]: Kết quả / link PR / tài liệu...',
+    '',
+    '3. KHÓ KHĂN, VƯỚNG MẮC (Issues / Blockers):',
+    '- Khó khăn gặp phải: [Vấn đề kỹ thuật, resource, phụ thuộc bên thứ 3...]',
+    '- Đề xuất giải pháp / Cần ai hỗ trợ:',
+    '',
+    '4. KẾ HOẠCH TRỌNG TÂM TUẦN TỚI (Chuẩn bị họp Thứ Hai):',
+    '- Mục tiêu trọng tâm tuần tới:',
+    '- Deadline dự kiến:',
+    '```',
+    '',
+    '👉 *Anh em vui lòng reply báo cáo trực tiếp vào thread này trước buổi họp Thứ Hai nhé! Chúc mọi người cuối tuần vui vẻ!* 🎉',
+  ].join('\n');
+
+  const messageResponse = await fetch(`https://discord.com/api/v10/channels/${threadId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bot ${botToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      content: reminderMessage,
+    }),
+  });
+
+  if (!messageResponse.ok) {
+    const errText = await messageResponse.text();
+    console.error(`[Weekly-Report] ⚠️ Tạo thread thành công nhưng không gửi được tin nhắn mẫu: ${errText}`);
+    return;
+  }
+
+  console.log(`[Weekly-Report] ✅ Đã gửi tin nhắn mẫu Báo cáo tuần vào thread thành công!`);
+}
+
+// Nếu chạy trực tiếp file này (ví dụ `npm run test-run`, `npm run test-reminder`, `npm run test-weekly`)
 if (process.argv[1]?.includes('standup.ts')) {
   const isReminder = process.argv.includes('--reminder');
   const action = isReminder ? remindStandupSubmission() : createDailyStandupThread();
+  let action: Promise<void>;
+  if (process.argv.includes('--weekly')) {
+    action = remindWeeklyReport();
+  } else if (process.argv.includes('--reminder')) {
+    action = remindStandupSubmission();
+  } else {
+    action = createDailyStandupThread();
+  }
   action.catch((err) => {
     console.error('[Stand-up] Lỗi:', err);
     process.exit(1);
   });
 }
+

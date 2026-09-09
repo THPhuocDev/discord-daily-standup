@@ -1,0 +1,40 @@
+name: Weekly Report Reminder (Saturday)
+
+on:
+  schedule:
+    # 02:05 UTC Thứ 7 = 09:05 sáng Thứ 7 giờ Việt Nam (UTC+7)
+    # Né phút :00 để tránh nghẽn queue runner của GitHub Actions
+    - cron: '5 2 * * 6'
+  # Cho phép bấm nút "Run workflow" để test ngay lập tức trên GitHub
+  workflow_dispatch:
+
+jobs:
+  run-weekly-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -d "discord-daily-standup" ]; then
+            cd discord-daily-standup
+          fi
+          npm ci || npm install
+
+      - name: Run Weekly Report reminder
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID || '1504851139441459241' }}
+          GUILD_ID: ${{ secrets.GUILD_ID || '1504851139005517995' }}
+        run: |
+          if [ -d "discord-daily-standup" ]; then
+            cd discord-daily-standup
+          fi
+          npm run test-weekly
+

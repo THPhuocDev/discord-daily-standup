@@ -1,0 +1,93 @@
+# Discord Daily Stand-up & Weekly Report Bot
+
+Bot tự động hóa quy trình Daily Stand-up và nhắc nhở Báo cáo tuần (Weekly Report) cho team qua Discord. Hoạt động linh hoạt trên cả **Local/VPS (node-cron)** và **GitHub Actions (serverless)**.
+
+---
+
+## 📌 Tính Năng Chính
+
+1. **Tạo Thread Daily Stand-up Tự Động**:
+   - Tự động tạo thread mới theo ngày (`DD-MM-YYYY`) trong Text Channel quy định.
+   - Tag toàn bộ thành viên trong server (trừ bot và tài khoản chỉ định như `longnx`).
+   - Gửi sẵn tin nhắn template chuẩn: `DONE`, `DOING`, `ISSUE`, `NEXT`.
+   - Có cơ chế kiểm tra tránh trùng lặp thread (idempotent).
+
+2. **Nhắc Nhở Nộp Bài Cuối Ngày (9PM Reminder)**:
+   - Tự động quét thread của ngày hôm nay lúc 21:00 tối.
+   - Gửi tin nhắn nhắc nhở các thành viên chưa nộp bài hoàn thành trước khi hết ngày.
+
+3. **Nhắc Nhở Báo Cáo Tuần (Weekly Report — Thứ 7 Hàng Tuần)**:
+   - Tự động kích hoạt vào sáng Thứ 7 hàng tuần (09:05 qua GitHub Actions / 09:00 qua cron).
+   - Tự động tính toán ngày họp **Thứ Hai kế tiếp** (`thứ Hai (DD/MM)`).
+   - Nhấn mạnh yêu cầu bắt buộc: **Báo cáo phải thể hiện rõ phần Overview đối chiếu kết quả đạt được so với kế hoạch (`Recover vs. Master Plan`), không chỉ báo cáo hành động đơn thuần**.
+   - Cung cấp sẵn template chuẩn để team nộp báo cáo chuẩn bị cho buổi họp đầu tuần.
+
+---
+
+## ⚙️ Cấu Hình Môi Trường
+
+Tạo file `.env` dựa trên `.env.example`:
+
+```env
+# Token Bot Discord (Lấy từ Discord Developer Portal)
+DISCORD_BOT_TOKEN=your_bot_token_here
+
+# Channel ID của kênh nhận thông báo (ví dụ #daily-stand-up)
+CHANNEL_ID=1504851139441459241
+
+# Server ID (Guild ID)
+GUILD_ID=1504851139005517995
+
+# Lịch cron chạy Daily Stand-up (mặc định: 01:00 sáng mỗi ngày)
+CRON_SCHEDULE=0 1 * * *
+
+# Lịch cron chạy Weekly Report (mặc định: 09:00 sáng Thứ 7 hàng tuần)
+WEEKLY_REPORT_CRON=0 9 * * 6
+
+# Timezone
+TIMEZONE=Asia/Ho_Chi_Minh
+```
+
+Nếu chạy qua **GitHub Actions**, cấu hình trong mục **Repository Settings -> Secrets and variables -> Actions**:
+- `DISCORD_BOT_TOKEN` (bắt buộc)
+- `CHANNEL_ID` (tùy chọn, mặc định đã gán sẵn trong workflow)
+- `GUILD_ID` (tùy chọn, mặc định đã gán sẵn trong workflow)
+
+---
+
+## 🚀 Các Lệnh Chạy (Scripts)
+
+```bash
+# Cài đặt dependencies
+npm install
+
+# Build mã nguồn TypeScript sang JavaScript
+npm run build
+
+# Chạy bot ở chế độ daemon cronjob liên tục
+npm run dev
+# hoặc sau khi build:
+npm start
+
+# Test tạo Thread Daily Stand-up ngay lập tức
+npm run test-run
+
+# Test gửi nhắc nhở nộp bài 21:00 ngay lập tức
+npm run test-reminder
+
+# Test gửi nhắc nhở Báo cáo tuần (Weekly Report) ngay lập tức
+npm run test-weekly
+```
+
+---
+
+## ⏰ Lịch Chạy Trên GitHub Actions
+
+- **Daily Standup Trigger** (`.github/workflows/daily-standup.yml`):
+  - Chạy lúc `17:05 UTC` (00:05 đêm giờ VN).
+- **Daily Reminder** (`.github/workflows/daily-reminder.yml`):
+  - Chạy lúc `14:05 UTC` (21:05 tối giờ VN).
+- **Weekly Report Reminder** (`.github/workflows/weekly-report.yml`):
+  - Chạy lúc `02:05 UTC Thứ 7` (09:05 sáng Thứ 7 giờ VN).
+  - Hỗ trợ nút `Run workflow` (workflow_dispatch) để test bất cứ lúc nào.
+
