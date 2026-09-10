@@ -2,9 +2,10 @@ name: Weekly Report Reminder (Saturday)
 
 on:
   schedule:
-    # 02:05 UTC Thứ 7 = 09:05 sáng Thứ 7 giờ Việt Nam (UTC+7)
-    # Né phút :00 để tránh nghẽn queue runner của GitHub Actions
+    # 02:05 UTC Thứ 7 = 09:05 sáng Thứ 7 giờ Việt Nam (Lịch chính)
     - cron: '5 2 * * 6'
+    # 02:35 UTC Thứ 7 = 09:35 sáng Thứ 7 giờ Việt Nam (Lịch dự phòng)
+    - cron: '35 2 * * 6'
   # Cho phép bấm nút "Run workflow" để test ngay lập tức trên GitHub
   workflow_dispatch:
 
@@ -37,4 +38,16 @@ jobs:
             cd discord-daily-standup
           fi
           npm run test-weekly
+
+      - name: Alert failure to Discord
+        if: failure()
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID || '1504851139441459241' }}
+        run: |
+          curl -s -X POST "https://discord.com/api/v10/channels/${CHANNEL_ID}/messages" \
+            -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"🚨 **[CẢNH BÁO HỆ THỐNG BOT]** Workflow \`${{ github.workflow }}\` vừa bị lỗi! Vui lòng kiểm tra log tại: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
+
 

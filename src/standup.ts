@@ -52,6 +52,37 @@ interface DiscordMember {
 }
 
 /**
+ * Bọc fetch với cơ chế tự động thử lại (Retry) khi gặp 429 Rate Limit hoặc lỗi mạng tạm thời
+ */
+async function fetchWithRetry(url: string, options: RequestInit, retries = 3, delayMs = 1500): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429) {
+        const retryAfterSec = Number(res.headers.get('retry-after')) || (delayMs / 1000);
+        console.warn(`[API] ⚠️ Bị Discord Rate Limit (429), chờ ${retryAfterSec}s rồi thử lại lần ${attempt}/${retries}...`);
+        await new Promise((r) => setTimeout(r, retryAfterSec * 1000 + 500));
+        continue;
+      }
+      if (res.status >= 500 && attempt < retries) {
+        console.warn(`[API] ⚠️ Server Discord phản hồi lỗi (HTTP ${res.status}), thử lại lần ${attempt}/${retries}...`);
+        await new Promise((r) => setTimeout(r, delayMs * attempt));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      if (attempt < retries) {
+        console.warn(`[API] ⚠️ Lỗi kết nối mạng (${err}), thử lại lần ${attempt}/${retries}...`);
+        await new Promise((r) => setTimeout(r, delayMs * attempt));
+      } else {
+        throw err;
+      }
+    }
+  }
+  return fetch(url, options);
+}
+
+/**
  * Lấy danh sách mention (@user) của toàn bộ anh em, trừ tài khoản bot và trừ 'longnx'
  */
 async function getMentionsExcludingLongnx(
@@ -63,7 +94,7 @@ async function getMentionsExcludingLongnx(
 
   // 1. Thử lấy từ danh sách thành viên của server (Guild Members)
   try {
-    const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members?limit=100`, {
+    const res = await fetchWithRetry(`https://discord.com/api/v10/guilds/${guildId}/members?limit=100`, {
       headers: { Authorization: `Bot ${botToken}` },
     });
 
@@ -88,7 +119,7 @@ async function getMentionsExcludingLongnx(
   // 2. Fallback: Nếu API Server Members bị chặn hoặc không có quyền GUILD_MEMBERS, quét tác giả từ các tin nhắn gần nhất trong kênh
   if (targetUserIds.size === 0) {
     try {
-      const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages?limit=50`, {
+      const res = await fetchWithRetry(`https://discord.com/api/v10/channels/${channelId}/messages?limit=50`, {
         headers: { Authorization: `Bot ${botToken}` },
       });
       if (res.ok) {
@@ -118,8 +149,9 @@ async function getMentionsExcludingLongnx(
 
 /**
  * Gọi REST API của Discord để tạo Thread trong Text Channel và gửi tin nhắn nhắc nhở
+ * Trả về Thread ID (nếu tạo mới hoặc đã tồn tại)
  */
-export async function createDailyStandupThread(): Promise<void> {
+export async function createDailyStandupThread(): Promise<string | undefined> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   const channelId = process.env.CHANNEL_ID || '1504851139441459241'; // Kênh #daily-stand-up
 
@@ -136,7 +168,7 @@ export async function createDailyStandupThread(): Promise<void> {
   try {
     // 0.1 Lấy guildId nếu chưa có
     if (!guildId) {
-      const chRes = await fetch(`https://discord.com/api/v10/channels/${channelId}`, {
+      const chRes = await fetchWithRetry(`https://discord.com/api/v10/channels/${channelId}`, {
         headers: { Authorization: `Bot ${botToken}` },
       });
       if (chRes.ok) {
@@ -151,7 +183,7 @@ export async function createDailyStandupThread(): Promise<void> {
 
     // 0.2 Kiểm tra trong active threads của guild (Endpoint chuẩn Discord API)
     if (guildId) {
-      const activeRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
+      const activeRes = await fetchWithRetry(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
         headers: { Authorization: `Bot ${botToken}` },
       });
       if (activeRes.ok) {
@@ -168,7 +200,7 @@ export async function createDailyStandupThread(): Promise<void> {
 
     // 0.3 Kiểm tra thêm trong archived threads của channel (phòng trường hợp thread đã bị archived)
     if (!existingThread) {
-      const archivedRes = await fetch(
+      const archivedRes = await fetchWithRetry(
         `https://discord.com/api/v10/channels/${channelId}/threads/archived/public?limit=20`,
         {
           headers: { Authorization: `Bot ${botToken}` },
@@ -186,14 +218,14 @@ export async function createDailyStandupThread(): Promise<void> {
       console.log(
         `[Stand-up] ℹ️ Thread "${threadTitle}" ngày hôm nay đã được tạo rồi (ID: ${existingThread.id}). Không cần tạo lại!`
       );
-      return;
+      return existingThread.id;
     }
   } catch (err) {
     console.warn('[Stand-up] Lỗi khi kiểm tra thread trùng lặp:', err);
   }
 
   // 1. Tạo Thread mới trong Text Channel (Type 11 = GUILD_PUBLIC_THREAD)
-  const threadResponse = await fetch(`https://discord.com/api/v10/channels/${channelId}/threads`, {
+  const threadResponse = await fetchWithRetry(`https://discord.com/api/v10/channels/${channelId}/threads`, {
     method: 'POST',
     headers: {
       Authorization: `Bot ${botToken}`,
@@ -215,7 +247,6 @@ export async function createDailyStandupThread(): Promise<void> {
   const threadId = threadData.id;
   console.log(`[Stand-up] ✅ Đã tạo thread thành công! Thread ID: ${threadId}`);
 
-  // 2. Gửi tin nhắn template vào trong Thread vừa tạo
   // 2. Lấy danh sách mention mọi người (trừ bot và longnx)
   const mentionText = await getMentionsExcludingLongnx(botToken, guildId, channelId);
 
@@ -240,7 +271,7 @@ export async function createDailyStandupThread(): Promise<void> {
     '```',
   ].join('\n');
 
-  const messageResponse = await fetch(`https://discord.com/api/v10/channels/${threadId}/messages`, {
+  const messageResponse = await fetchWithRetry(`https://discord.com/api/v10/channels/${threadId}/messages`, {
     method: 'POST',
     headers: {
       Authorization: `Bot ${botToken}`,
@@ -254,10 +285,11 @@ export async function createDailyStandupThread(): Promise<void> {
   if (!messageResponse.ok) {
     const errText = await messageResponse.text();
     console.error(`[Stand-up] ⚠️ Tạo thread thành công nhưng không gửi được tin nhắn mẫu: ${errText}`);
-    return;
+    return threadId;
   }
 
   console.log(`[Stand-up] ✅ Đã gửi tin nhắn mẫu vào thread thành công!`);
+  return threadId;
 }
 
 export async function remindStandupSubmission(): Promise<void> {
@@ -270,13 +302,13 @@ export async function remindStandupSubmission(): Promise<void> {
   }
 
   const threadTitle = getFormattedDate();
-  console.log(`[Reminder] 🔍 Đang tìm thread "${threadTitle}" để gửi nhắc nhở 21:00...`);
+  console.log(`[Reminder] 🔍 Đang tìm thread "${threadTitle}" để gửi nhắc nhở...`);
 
   let targetThreadId: string | undefined;
 
   // 1.1 Tìm ID của thread ngày hôm nay trong danh sách active threads
   try {
-    const activeRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
+    const activeRes = await fetchWithRetry(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
       headers: { Authorization: `Bot ${botToken}` },
     });
     if (activeRes.ok) {
@@ -297,7 +329,7 @@ export async function remindStandupSubmission(): Promise<void> {
   // 1.2 Fallback: Nếu không thấy trong active, thử tìm trong archived threads
   if (!targetThreadId) {
     try {
-      const archivedRes = await fetch(
+      const archivedRes = await fetchWithRetry(
         `https://discord.com/api/v10/channels/${channelId}/threads/archived/public?limit=20`,
         {
           headers: { Authorization: `Bot ${botToken}` },
@@ -315,15 +347,44 @@ export async function remindStandupSubmission(): Promise<void> {
     }
   }
 
+  // 1.3 Self-Healing: Nếu vẫn không tìm thấy thread của hôm nay, tự động kích hoạt tạo Thread mới ngay lập tức
   if (!targetThreadId) {
-    console.log(`[Reminder] ⚠️ Không tìm thấy thread "${threadTitle}" của ngày hôm nay để nhắc nhở!`);
+    console.log(`[Reminder] ⚠️ Chưa có thread "${threadTitle}" cho hôm nay. Đang tự động kích hoạt tạo Thread mới (Self-Healing)...`);
+    try {
+      targetThreadId = await createDailyStandupThread();
+    } catch (createErr) {
+      console.error('[Reminder] Tự động tạo thread thất bại:', createErr);
+    }
+  }
+
+  if (!targetThreadId) {
+    console.log(`[Reminder] ❌ Không tìm thấy và không thể tự tạo thread "${threadTitle}"!`);
     return;
+  }
+
+  // 1.4 Chống trùng lặp (Idempotency): Kiểm tra xem hôm nay đã gửi nhắc nhở vào thread này chưa
+  try {
+    const messagesRes = await fetchWithRetry(`https://discord.com/api/v10/channels/${targetThreadId}/messages?limit=20`, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    if (messagesRes.ok) {
+      const messages = (await messagesRes.json()) as Array<{ content?: string }>;
+      const alreadyReminded = messages.some((m) =>
+        m.content?.includes('REMINDER: ĐÃ ĐẾN') || m.content?.includes('chưa hoàn thành daily stand-up')
+      );
+      if (alreadyReminded) {
+        console.log(`[Reminder] ℹ️ Tin nhắn nhắc nhở đã được gửi trong thread "${threadTitle}" hôm nay rồi. Bỏ qua để tránh spam!`);
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn('[Reminder] Không kiểm tra được tin nhắn cũ, tiếp tục gửi:', err);
   }
 
   // 2. Lấy danh sách tag mọi người (trừ bot và longnx)
   const mentionText = await getMentionsExcludingLongnx(botToken, guildId, channelId);
 
-  // 3. Nội dung tin nhắn nhắc nhở lúc 21:00
+  // 3. Nội dung tin nhắn nhắc nhở
   const reminderContent = [
     `⏰ **REMINDER: ĐÃ ĐẾN TỐI RỒI!**`,
     `${mentionText}`,
@@ -331,7 +392,7 @@ export async function remindStandupSubmission(): Promise<void> {
   ].join('\n');
 
   // 4. Gửi tin nhắn vào trong thread
-  const res = await fetch(`https://discord.com/api/v10/channels/${targetThreadId}/messages`, {
+  const res = await fetchWithRetry(`https://discord.com/api/v10/channels/${targetThreadId}/messages`, {
     method: 'POST',
     headers: {
       Authorization: `Bot ${botToken}`,
@@ -371,7 +432,7 @@ export async function remindWeeklyReport(): Promise<void> {
   // 0. Kiểm tra xem thread tuần này đã tồn tại chưa (Idempotency)
   try {
     if (!guildId) {
-      const chRes = await fetch(`https://discord.com/api/v10/channels/${channelId}`, {
+      const chRes = await fetchWithRetry(`https://discord.com/api/v10/channels/${channelId}`, {
         headers: { Authorization: `Bot ${botToken}` },
       });
       if (chRes.ok) {
@@ -385,7 +446,7 @@ export async function remindWeeklyReport(): Promise<void> {
     let existingThread: { id: string; name: string } | undefined;
 
     if (guildId) {
-      const activeRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
+      const activeRes = await fetchWithRetry(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
         headers: { Authorization: `Bot ${botToken}` },
       });
       if (activeRes.ok) {
@@ -399,7 +460,7 @@ export async function remindWeeklyReport(): Promise<void> {
     }
 
     if (!existingThread) {
-      const archivedRes = await fetch(
+      const archivedRes = await fetchWithRetry(
         `https://discord.com/api/v10/channels/${channelId}/threads/archived/public?limit=20`,
         {
           headers: { Authorization: `Bot ${botToken}` },
@@ -424,7 +485,7 @@ export async function remindWeeklyReport(): Promise<void> {
   }
 
   // 1. Tạo Thread mới trong Text Channel
-  const threadResponse = await fetch(`https://discord.com/api/v10/channels/${channelId}/threads`, {
+  const threadResponse = await fetchWithRetry(`https://discord.com/api/v10/channels/${channelId}/threads`, {
     method: 'POST',
     headers: {
       Authorization: `Bot ${botToken}`,
@@ -483,7 +544,7 @@ export async function remindWeeklyReport(): Promise<void> {
     '👉 *Anh em vui lòng reply báo cáo trực tiếp vào thread này trước buổi họp Thứ Hai nhé! Chúc mọi người cuối tuần vui vẻ!* 🎉',
   ].join('\n');
 
-  const messageResponse = await fetch(`https://discord.com/api/v10/channels/${threadId}/messages`, {
+  const messageResponse = await fetchWithRetry(`https://discord.com/api/v10/channels/${threadId}/messages`, {
     method: 'POST',
     headers: {
       Authorization: `Bot ${botToken}`,
@@ -505,7 +566,7 @@ export async function remindWeeklyReport(): Promise<void> {
 
 // Nếu chạy trực tiếp file này (ví dụ `npm run test-run`, `npm run test-reminder`, `npm run test-weekly`)
 if (process.argv[1]?.includes('standup.ts')) {
-  let action: Promise<void>;
+  let action: Promise<unknown>;
   if (process.argv.includes('--weekly')) {
     action = remindWeeklyReport();
   } else if (process.argv.includes('--reminder')) {

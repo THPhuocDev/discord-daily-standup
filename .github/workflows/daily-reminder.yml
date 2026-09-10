@@ -2,8 +2,14 @@ name: Daily Standup 9PM Reminder
 
 on:
   schedule:
-    # 14:05 UTC = 21:05 tối giờ Việt Nam (né phút :00 để không bị nghẽn runner)
+    # 14:05 UTC = 21:05 tối giờ Việt Nam (Lịch chính - né phút :00 để tránh nghẽn runner)
     - cron: '5 14 * * *'
+    # 14:35 UTC = 21:35 tối giờ Việt Nam (Lịch dự phòng 1)
+    - cron: '35 14 * * *'
+    # 15:05 UTC = 22:05 tối giờ Việt Nam (Lịch dự phòng 2)
+    - cron: '5 15 * * *'
+    # 15:35 UTC = 22:35 tối giờ Việt Nam (Lịch dự phòng 3)
+    - cron: '35 15 * * *'
   workflow_dispatch:
 
 jobs:
@@ -35,3 +41,14 @@ jobs:
             cd discord-daily-standup
           fi
           npm run test-reminder
+
+      - name: Alert failure to Discord
+        if: failure()
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID || '1504851139441459241' }}
+        run: |
+          curl -s -X POST "https://discord.com/api/v10/channels/${CHANNEL_ID}/messages" \
+            -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"🚨 **[CẢNH BÁO HỆ THỐNG BOT]** Workflow \`${{ github.workflow }}\` vừa bị lỗi! Vui lòng kiểm tra log tại: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
