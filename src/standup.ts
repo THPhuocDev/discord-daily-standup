@@ -505,8 +505,6 @@ export async function remindWeeklyReport(): Promise<void> {
 
 // Nếu chạy trực tiếp file này (ví dụ `npm run test-run`, `npm run test-reminder`, `npm run test-weekly`)
 if (process.argv[1]?.includes('standup.ts')) {
-  const isReminder = process.argv.includes('--reminder');
-  const action = isReminder ? remindStandupSubmission() : createDailyStandupThread();
   let action: Promise<void>;
   if (process.argv.includes('--weekly')) {
     action = remindWeeklyReport();
