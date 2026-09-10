@@ -10,6 +10,8 @@ on:
     - cron: '5 15 * * *'
     # 15:35 UTC = 22:35 tối giờ Việt Nam (Lịch dự phòng 3)
     - cron: '35 15 * * *'
+    # 16:05 UTC = 23:05 tối giờ Việt Nam (Lịch dự phòng 4 - Chốt chặn an toàn cuối ngày lúc 11h đêm)
+    - cron: '5 16 * * *'
   workflow_dispatch:
 
 jobs:

@@ -8,8 +8,10 @@ on:
     - cron: '30 17 * * *'
     # 18:05 UTC = 01:05 sáng giờ Việt Nam (Lịch dự phòng 2)
     - cron: '5 18 * * *'
-    # 01:05 UTC = 08:05 sáng giờ Việt Nam (Lưới cứu hộ buổi sáng: Đảm bảo nếu ban đêm nghẽn queue thì 8h sáng thread vẫn sẵn sàng)
+    # 01:05 UTC = 08:05 sáng giờ Việt Nam (Lưới cứu hộ buổi sáng 1)
     - cron: '5 1 * * *'
+    # 01:35 UTC = 08:35 sáng giờ Việt Nam (Lưới cứu hộ buổi sáng 2)
+    - cron: '35 1 * * *'
   # Cho phép bấm nút "Run workflow" để test ngay lập tức trên GitHub
   workflow_dispatch:
 

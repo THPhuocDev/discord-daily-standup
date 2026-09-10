@@ -92,7 +92,8 @@ Hệ thống được thiết kế với cơ chế **Chống trùng lặp (Idemp
   - Lịch chính: `17:05 UTC` (00:05 đêm giờ VN).
   - Dự phòng 1: `17:30 UTC` (00:30 đêm giờ VN).
   - Dự phòng 2: `18:05 UTC` (01:05 sáng giờ VN).
-  - Lưới cứu hộ sáng: `01:05 UTC` (08:05 sáng giờ VN) — đảm bảo nếu ban đêm GitHub nghẽn runner thì sáng sớm thread vẫn có sẵn trước 8h30.
+  - Dự phòng 3: `01:05 UTC` (08:05 sáng giờ VN — Lưới cứu hộ sáng 1).
+  - Dự phòng 4: `01:35 UTC` (08:35 sáng giờ VN — Lưới cứu hộ sáng 2).
   - Tích hợp `Alert failure to Discord`: Tự động bắn thông báo `🚨` vào kênh nếu gặp lỗi.
 
 - **Daily Reminder** (`.github/workflows/daily-reminder.yml`):
@@ -100,13 +101,16 @@ Hệ thống được thiết kế với cơ chế **Chống trùng lặp (Idemp
   - Dự phòng 1: `14:35 UTC` (21:35 tối giờ VN).
   - Dự phòng 2: `15:05 UTC` (22:05 tối giờ VN).
   - Dự phòng 3: `15:35 UTC` (22:35 tối giờ VN).
+  - Dự phòng 4: `16:05 UTC` (23:05 đêm giờ VN — Chốt chặn 11h đêm).
   - Cơ chế **Self-Healing**: Nếu thread hôm nay chưa có, bot tự động tạo thread mới rồi mới gửi nhắc nhở.
   - Cơ chế **Idempotency**: Kiểm tra tin nhắn trong thread; nếu đã nhắc rồi thì tự động bỏ qua, không spam.
   - Tích hợp `Alert failure to Discord`: Tự động cảnh báo `🚨` vào kênh nếu gặp sự cố.
 
 - **Weekly Report Reminder** (`.github/workflows/weekly-report.yml`):
   - Lịch chính: `02:05 UTC Thứ 7` (09:05 sáng Thứ 7 giờ VN).
-  - Dự phòng: `02:35 UTC Thứ 7` (09:35 sáng Thứ 7 giờ VN).
+  - Dự phòng 1: `02:35 UTC Thứ 7` (09:35 sáng Thứ 7 giờ VN).
+  - Dự phòng 2: `03:05 UTC Thứ 7` (10:05 sáng Thứ 7 giờ VN).
+  - Dự phòng 3: `03:35 UTC Thứ 7` (10:35 sáng Thứ 7 giờ VN).
   - Tích hợp `Alert failure to Discord` khi gặp sự cố.
 
 
