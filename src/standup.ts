@@ -83,9 +83,87 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 3, de
 }
 
 /**
- * Lấy danh sách mention (@user) của toàn bộ anh em, trừ tài khoản bot và trừ 'longnx'
+ * Chuẩn hóa văn bản tiếng Việt: chuyển chữ thường, gỡ bỏ dấu thanh, bỏ khoảng trắng thừa
  */
-async function getMentionsExcludingLongnx(
+export function removeDiacritics(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .trim();
+}
+
+/**
+ * Kiểm tra xem một thành viên có thuộc danh sách loại trừ (không tag khi nhắc standup / report) hay không.
+ * Mặc định loại trừ:
+ * - 'longnx'
+ * - 'Trường Thành' (và các biến thể: 'truong thanh', 'truongthanh', 'trường thành', 'trương thành', v.v.)
+ * - Bất kỳ username / User ID / từ khóa nào được cấu hình trong biến môi trường EXCLUDED_USERS
+ */
+export function isUserExcluded(
+  user: { id?: string; username: string; global_name?: string },
+  nick?: string
+): boolean {
+  // 1. Lấy cấu hình bổ sung từ biến môi trường EXCLUDED_USERS (danh sách cách nhau bởi dấu phẩy)
+  const envExcluded = process.env.EXCLUDED_USERS
+    ? process.env.EXCLUDED_USERS.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+    : [];
+
+  const defaultExcludedKeywords = [
+    'longnx',
+    'lê trường thành',
+    'le truong thanh',
+    'letruongthanh',
+    'truongthanh',
+    'truong thanh',
+    'trường thành',
+    'trương thành',
+    'truong.thanh',
+    'truong_thanh',
+    'truong-thanh',
+  ];
+
+  const allExcluded = Array.from(new Set([...defaultExcludedKeywords, ...envExcluded]));
+
+  // 2. Kiểm tra theo Discord User ID trực tiếp
+  if (user.id && allExcluded.includes(user.id.toLowerCase())) {
+    return true;
+  }
+
+  // 3. Gộp tất cả các chuỗi định danh: username + nick + global_name
+  const rawName = `${user.username} ${nick || ''} ${user.global_name || ''}`.toLowerCase();
+  const normalizedWithSpaces = removeDiacritics(rawName);
+  const normalizedNoSpaces = normalizedWithSpaces.replace(/[^a-z0-9]/g, '');
+
+  // 4. Kiểm tra từng pattern trong danh sách loại trừ
+  for (const pattern of allExcluded) {
+    const rawPattern = pattern.toLowerCase();
+    const normPattern = removeDiacritics(pattern);
+    const normPatternNoSpaces = normPattern.replace(/[^a-z0-9]/g, '');
+
+    if (
+      rawName.includes(rawPattern) ||
+      normalizedWithSpaces.includes(normPattern) ||
+      (normPatternNoSpaces.length > 0 && normalizedNoSpaces.includes(normPatternNoSpaces))
+    ) {
+      return true;
+    }
+  }
+
+  // 5. Kiểm tra trường hợp chứa cả 2 từ "truong" và "thanh" (phòng trường hợp tách biệt giữa họ tên và nickname)
+  if (normalizedWithSpaces.includes('truong') && normalizedWithSpaces.includes('thanh')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Lấy danh sách mention (@user) của toàn bộ anh em, trừ tài khoản bot, 'longnx' và 'Trường Thành'
+ */
+export async function getMentionsExcludingUsers(
   botToken: string,
   guildId: string,
   channelId: string
@@ -102,9 +180,8 @@ async function getMentionsExcludingLongnx(
       const members = (await res.json()) as DiscordMember[];
       for (const m of members) {
         if (m.user.bot) continue;
-        const name = `${m.user.username} ${m.nick || ''} ${m.user.global_name || ''}`.toLowerCase();
-        if (name.includes('longnx')) {
-          console.log(`[Stand-up] 🚫 Đã bỏ qua không tag: ${m.user.username} (ID: ${m.user.id})`);
+        if (isUserExcluded(m.user, m.nick)) {
+          console.log(`[Stand-up] 🚫 Đã bỏ qua không tag: ${m.user.username} (Nick: ${m.nick || 'N/A'}, ID: ${m.user.id})`);
           continue;
         }
         targetUserIds.add(m.user.id);
@@ -123,10 +200,15 @@ async function getMentionsExcludingLongnx(
         headers: { Authorization: `Bot ${botToken}` },
       });
       if (res.ok) {
-        const messages = (await res.json()) as Array<{ author: { id: string; username: string; bot?: boolean } }>;
+        const messages = (await res.json()) as Array<{
+          author: { id: string; username: string; global_name?: string; bot?: boolean };
+        }>;
         for (const msg of messages) {
           if (msg.author.bot) continue;
-          if (msg.author.username.toLowerCase().includes('longnx')) continue;
+          if (isUserExcluded(msg.author)) {
+            console.log(`[Stand-up] 🚫 Đã bỏ qua không tag (từ tin nhắn): ${msg.author.username} (ID: ${msg.author.id})`);
+            continue;
+          }
           targetUserIds.add(msg.author.id);
         }
       }
@@ -146,6 +228,9 @@ async function getMentionsExcludingLongnx(
   console.log(`[Stand-up] Đã lọc được ${targetUserIds.size} anh em cần tag:`, mentions);
   return mentions;
 }
+
+// Giữ lại alias tương thích ngược nếu có nơi khác gọi
+export const getMentionsExcludingLongnx = getMentionsExcludingUsers;
 
 /**
  * Gọi REST API của Discord để tạo Thread trong Text Channel và gửi tin nhắn nhắc nhở
@@ -247,8 +332,8 @@ export async function createDailyStandupThread(): Promise<string | undefined> {
   const threadId = threadData.id;
   console.log(`[Stand-up] ✅ Đã tạo thread thành công! Thread ID: ${threadId}`);
 
-  // 2. Lấy danh sách mention mọi người (trừ bot và longnx)
-  const mentionText = await getMentionsExcludingLongnx(botToken, guildId, channelId);
+  // 2. Lấy danh sách mention mọi người (trừ bot, longnx và Trường Thành)
+  const mentionText = await getMentionsExcludingUsers(botToken, guildId, channelId);
 
   // 3. Gửi tin nhắn template vào trong Thread vừa tạo
   const reminderMessage = [
@@ -381,8 +466,8 @@ export async function remindStandupSubmission(): Promise<void> {
     console.warn('[Reminder] Không kiểm tra được tin nhắn cũ, tiếp tục gửi:', err);
   }
 
-  // 2. Lấy danh sách tag mọi người (trừ bot và longnx)
-  const mentionText = await getMentionsExcludingLongnx(botToken, guildId, channelId);
+  // 2. Lấy danh sách tag mọi người (trừ bot, longnx và Trường Thành)
+  const mentionText = await getMentionsExcludingUsers(botToken, guildId, channelId);
 
   // 3. Nội dung tin nhắn nhắc nhở
   const reminderContent = [
@@ -507,8 +592,8 @@ export async function remindWeeklyReport(): Promise<void> {
   const threadId = threadData.id;
   console.log(`[Weekly-Report] ✅ Đã tạo thread thành công! Thread ID: ${threadId}`);
 
-  // 2. Lấy danh sách mention mọi người (trừ bot và longnx)
-  const mentionText = await getMentionsExcludingLongnx(botToken, guildId, channelId);
+  // 2. Lấy danh sách mention mọi người (trừ bot, longnx và Trường Thành)
+  const mentionText = await getMentionsExcludingUsers(botToken, guildId, channelId);
 
   // 3. Gửi tin nhắn template vào trong Thread vừa tạo
   const reminderMessage = [

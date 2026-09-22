@@ -8,13 +8,13 @@ Bot tự động hóa quy trình Daily Stand-up và nhắc nhở Báo cáo tuầ
 
 1. **Tạo Thread Daily Stand-up Tự Động**:
    - Tự động tạo thread mới theo ngày (`DD-MM-YYYY`) trong Text Channel quy định.
-   - Tag toàn bộ thành viên trong server (trừ bot và tài khoản chỉ định như `longnx`).
+   - Tag toàn bộ thành viên trong server (tự động loại trừ bot và các tài khoản chỉ định như `longnx`, `Trường Thành`).
    - Gửi sẵn tin nhắn template chuẩn: `DONE`, `DOING`, `ISSUE`, `NEXT`.
    - Có cơ chế kiểm tra tránh trùng lặp thread (idempotent).
 
 2. **Nhắc Nhở Nộp Bài Cuối Ngày (9PM Reminder)**:
    - Tự động quét thread của ngày hôm nay lúc 21:00 tối.
-   - Gửi tin nhắn nhắc nhở các thành viên chưa nộp bài hoàn thành trước khi hết ngày.
+   - Gửi tin nhắn nhắc nhở các thành viên hoàn thành trước khi hết ngày (tự động loại trừ `longnx`, `Trường Thành`).
 
 3. **Nhắc Nhở Báo Cáo Tuần (Weekly Report — Thứ 7 Hàng Tuần)**:
    - Tự động kích hoạt vào sáng Thứ 7 hàng tuần (09:05 qua GitHub Actions / 09:00 qua cron).
@@ -46,12 +46,16 @@ WEEKLY_REPORT_CRON=0 9 * * 6
 
 # Timezone
 TIMEZONE=Asia/Ho_Chi_Minh
+
+# Danh sách loại trừ không tag (mặc định code đã tự loại trừ longnx, truongthanh, trường thành)
+EXCLUDED_USERS=longnx,truongthanh,trường thành
 ```
 
 Nếu chạy qua **GitHub Actions**, cấu hình trong mục **Repository Settings -> Secrets and variables -> Actions**:
 - `DISCORD_BOT_TOKEN` (bắt buộc)
 - `CHANNEL_ID` (tùy chọn, mặc định đã gán sẵn trong workflow)
 - `GUILD_ID` (tùy chọn, mặc định đã gán sẵn trong workflow)
+- `EXCLUDED_USERS` (tùy chọn, nếu muốn bổ sung thêm User ID hoặc username khác)
 
 ---
 
