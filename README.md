@@ -22,6 +22,15 @@ Bot tự động hóa quy trình Daily Stand-up và nhắc nhở Báo cáo tuầ
    - Nhấn mạnh yêu cầu bắt buộc: **Báo cáo phải thể hiện rõ phần Overview đối chiếu kết quả đạt được so với kế hoạch (`Recover vs. Master Plan`), không chỉ báo cáo hành động đơn thuần**.
    - Cung cấp sẵn template chuẩn để team nộp báo cáo chuẩn bị cho buổi họp đầu tuần.
 
+4. **Báo Cáo Sức Khỏe Server & Phân Tích Alert Hàng Ngày (Server Health & Alert Diagnosis)**:
+   - Tự động cào dữ liệu viễn trắc từ Prometheus TSDB & Node Exporter trên Cloud VPS (`103.75.187.86`).
+   - Kiểm tra liveness trực tiếp các endpoint: Website Frontend, API Gateway, Grafana Dashboard, Dozzle Logs.
+   - Đo lường tài nguyên phần cứng (CPU %, RAM used/total, Ổ cứng used/total).
+   - Đánh giá chất lượng dịch vụ API (Lưu lượng requests, 2xx OK, 4xx Client Error, 5xx Server Error, Độ trễ p95 latency, Heap RAM).
+   - **Động cơ phân tích thông minh**: Tự động chẩn đoán sức khỏe, phát hiện bất thường, phân loại cảnh báo (🟢 HEALTHY / 🟡 WARNING / 🔴 CRITICAL).
+   - Đưa ra khuyến nghị kỹ thuật hành động cụ thể (Action Plan) cho team Dev/DevOps.
+   - Gửi tự động kèm theo Daily Standup Thread mỗi ngày và có cơ chế chống spam (Idempotency).
+
 ---
 
 ## ⚙️ Cấu Hình Môi Trường
@@ -81,6 +90,9 @@ npm run test-reminder
 
 # Test gửi nhắc nhở Báo cáo tuần (Weekly Report) ngay lập tức
 npm run test-weekly
+
+# Test kiểm tra sức khỏe server & gửi báo cáo alert ngay lập tức
+npm run test-server-health
 ```
 
 ---

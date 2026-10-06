@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import cron from 'node-cron';
-import { createDailyStandupThread, remindStandupSubmission, remindWeeklyReport } from './standup.js';
+import { createDailyStandupThread, remindStandupSubmission, remindWeeklyReport, sendDailyServerHealthReport } from './standup.js';
 
 // Mặc định: Đúng 01:00 sáng mỗi ngày ('0 1 * * *')
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 1 * * *';
@@ -8,9 +8,10 @@ const WEEKLY_REPORT_CRON = process.env.WEEKLY_REPORT_CRON || '0 9 * * 6'; // 09:
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Ho_Chi_Minh';
 
 console.log('--------------------------------------------------');
-console.log('🤖 Discord Daily Stand-up & Weekly Report Bot');
-console.log(`⏰ Daily Standup: "${CRON_SCHEDULE}" (Timezone: ${TIMEZONE})`);
+console.log('🤖 Discord Daily Stand-up & Server Health Alert Bot');
+console.log(`⏰ Daily Standup & Health Report: "${CRON_SCHEDULE}" (Timezone: ${TIMEZONE})`);
 console.log(`⏰ Weekly Report (Thứ 7): "${WEEKLY_REPORT_CRON}" (Timezone: ${TIMEZONE})`);
+console.log(`🩺 Sức Khỏe Server & Alert: Tự động phân tích & gửi kèm Daily Report`);
 console.log(`📌 Kênh nhận report: ${process.env.CHANNEL_ID || '1504851139441459241'}`);
 console.log('--------------------------------------------------');
 

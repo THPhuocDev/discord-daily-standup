@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import process from 'process';
+import { sendDailyServerHealthReport } from './serverHealth.js';
 
 interface CreateThreadResponse {
   id: string;
@@ -303,6 +304,12 @@ export async function createDailyStandupThread(): Promise<string | undefined> {
       console.log(
         `[Stand-up] ℹ️ Thread "${threadTitle}" ngày hôm nay đã được tạo rồi (ID: ${existingThread.id}). Không cần tạo lại!`
       );
+      // Đảm bảo báo cáo sức khỏe server & alert được gửi vào thread nếu chưa có
+      try {
+        await sendDailyServerHealthReport(existingThread.id);
+      } catch (healthErr) {
+        console.error('[Stand-up] Lỗi khi gửi báo cáo sức khỏe server vào existing thread:', healthErr);
+      }
       return existingThread.id;
     }
   } catch (err) {
@@ -374,6 +381,14 @@ export async function createDailyStandupThread(): Promise<string | undefined> {
   }
 
   console.log(`[Stand-up] ✅ Đã gửi tin nhắn mẫu vào thread thành công!`);
+
+  // 4. Tự động kiểm tra sức khỏe server, phát hiện alert và gửi báo cáo phân tích vào thread
+  try {
+    await sendDailyServerHealthReport(threadId);
+  } catch (healthErr) {
+    console.error('[Stand-up] Lỗi khi gửi báo cáo sức khỏe server:', healthErr);
+  }
+
   return threadId;
 }
 
@@ -649,10 +664,15 @@ export async function remindWeeklyReport(): Promise<void> {
   console.log(`[Weekly-Report] ✅ Đã gửi tin nhắn mẫu Báo cáo tuần vào thread thành công!`);
 }
 
-// Nếu chạy trực tiếp file này (ví dụ `npm run test-run`, `npm run test-reminder`, `npm run test-weekly`)
+// Export hàm gửi báo cáo sức khỏe server để các module khác có thể tái sử dụng
+export { sendDailyServerHealthReport };
+
+// Nếu chạy trực tiếp file này (ví dụ `npm run test-run`, `npm run test-reminder`, `npm run test-weekly`, `npm run test-server-health`)
 if (process.argv[1]?.includes('standup.ts')) {
   let action: Promise<unknown>;
-  if (process.argv.includes('--weekly')) {
+  if (process.argv.includes('--server-health')) {
+    action = sendDailyServerHealthReport();
+  } else if (process.argv.includes('--weekly')) {
     action = remindWeeklyReport();
   } else if (process.argv.includes('--reminder')) {
     action = remindStandupSubmission();
