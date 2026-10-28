@@ -133,4 +133,8 @@ Hệ thống được thiết kế với cơ chế **Chống trùng lặp (Idemp
   - Dự phòng 3: `03:35 UTC Thứ 7` (10:35 sáng Thứ 7 giờ VN).
   - Tích hợp `Alert failure to Discord` khi gặp sự cố.
 
+- **Server Health & Monitoring Check** (`.github/workflows/server-health.yml`):
+  - Hỗ trợ nút kích hoạt thủ công `workflow_dispatch` ("Run workflow") trên GitHub Actions để quét toàn bộ hạ tầng VPS, cào Prometheus TSDB và bắn báo cáo vào `#monitoring` tức thì bất kỳ lúc nào.
+  - Tích hợp `Alert failure to Discord` khi gặp sự cố kết nối.
+
 

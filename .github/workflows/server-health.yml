@@ -1,0 +1,61 @@
+name: Server Health & Monitoring Check
+
+on:
+  # Cho phép bấm nút "Run workflow" trên GitHub Actions để kiểm tra sức khỏe server & alert tức thì
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Bỏ qua idempotency để ép gửi lại báo cáo mới nhất (mặc định: true)'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  check-server-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -d "discord-daily-standup" ]; then
+            cd discord-daily-standup
+          fi
+          npm ci || npm install
+
+      - name: Run Server Health Check
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          MONITORING_CHANNEL_ID: ${{ secrets.MONITORING_CHANNEL_ID || '1564279015693615134' }}
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL || 'https://abcpharmacy.store/grafana' }}
+          GRAFANA_USER: ${{ secrets.GRAFANA_USER || 'admin' }}
+          GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD || 'admin' }}
+          API_GATEWAY_URL: ${{ secrets.API_GATEWAY_URL || 'https://abcpharmacy.store/api/medicines' }}
+          WEB_HEALTH_URL: ${{ secrets.WEB_HEALTH_URL || 'https://abcpharmacy.store' }}
+          DOZZLE_URL: ${{ secrets.DOZZLE_URL || 'https://abcpharmacy.store/dozzle' }}
+        run: |
+          if [ -d "discord-daily-standup" ]; then
+            cd discord-daily-standup
+          fi
+          if [ "${{ github.event.inputs.force }}" = "false" ]; then
+            npm run test-server-health
+          else
+            npx tsx src/standup.ts --server-health --force
+          fi
+
+      - name: Alert failure to Discord
+        if: failure()
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          MONITORING_CHANNEL_ID: ${{ secrets.MONITORING_CHANNEL_ID || '1564279015693615134' }}
+        run: |
+          curl -s -X POST "https://discord.com/api/v10/channels/${MONITORING_CHANNEL_ID}/messages" \
+            -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"🚨 **[CẢNH BÁO HỆ THỐNG BOT]** Workflow \`${{ github.workflow }}\` vừa bị lỗi! Vui lòng kiểm tra log tại: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
