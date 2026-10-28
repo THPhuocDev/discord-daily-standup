@@ -675,7 +675,7 @@ export { sendDailyServerHealthReport, sendSystemNotification };
 if (process.argv[1]?.includes('standup.ts')) {
   let action: Promise<unknown>;
   if (process.argv.includes('--server-health')) {
-    action = sendDailyServerHealthReport();
+    action = sendDailyServerHealthReport(undefined, process.argv.includes('--force'));
   } else if (process.argv.includes('--weekly')) {
     action = remindWeeklyReport();
   } else if (process.argv.includes('--reminder')) {

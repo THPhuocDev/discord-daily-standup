@@ -55,7 +55,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { redirect: 'follow', ...options, signal: controller.signal });
     clearTimeout(id);
     return res;
   } catch (err) {
@@ -92,10 +92,19 @@ export function getFormattedDateVN(): string {
 /**
  * Truy vấn một biểu thức Prometheus thông qua Grafana datasource proxy
  */
-async function queryPrometheusViaGrafana(grafanaUrl: string, expr: string): Promise<any[]> {
+async function queryPrometheusViaGrafana(
+  grafanaUrl: string,
+  expr: string,
+  authHeader?: string
+): Promise<any[]> {
   try {
-    const url = `${grafanaUrl}/api/datasources/proxy/uid/prometheus/api/v1/query?query=${encodeURIComponent(expr)}`;
-    const res = await fetchWithTimeout(url, { method: 'GET' }, 6000);
+    const baseUrl = grafanaUrl.replace(/\/$/, '');
+    const url = `${baseUrl}/api/datasources/proxy/uid/prometheus/api/v1/query?query=${encodeURIComponent(expr)}`;
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+    const res = await fetchWithTimeout(url, { method: 'GET', headers }, 6000);
     if (!res.ok) return [];
     const json = (await res.json()) as any;
     return json?.data?.result || [];
@@ -122,7 +131,7 @@ async function checkEndpoint(name: string, url: string): Promise<EndpointStatus>
   try {
     const res = await fetchWithTimeout(url, { method: 'GET' }, 5000);
     const duration = Date.now() - start;
-    // Dozzle trả về 200 hoặc 405 (Method Not Allowed) cho GET gốc đều tính là server đang UP
+    // Dozzle và API trả về status < 500 đều tính là server đang UP
     const isUp = res.status >= 200 && res.status < 500;
     return {
       name,
@@ -146,19 +155,26 @@ async function checkEndpoint(name: string, url: string): Promise<EndpointStatus>
  * Thu thập toàn bộ dữ liệu sức khỏe của Server và Microservices
  */
 export async function collectServerHealth(): Promise<ServerHealthMetrics> {
-  const grafanaUrl = process.env.GRAFANA_URL || 'http://103.75.187.86:3001';
-  const apiGatewayMetricsUrl = process.env.API_GATEWAY_METRICS_URL || 'http://103.75.187.86:4000/metrics';
+  const grafanaUrl = process.env.GRAFANA_URL || 'https://abcpharmacy.store/grafana';
+  const grafanaUser = process.env.GRAFANA_USER || 'admin';
+  const grafanaPassword = process.env.GRAFANA_PASSWORD || 'admin';
+  const apiGatewayUrl =
+    process.env.API_GATEWAY_URL ||
+    process.env.API_GATEWAY_METRICS_URL ||
+    'https://abcpharmacy.store/api/medicines';
   const webUrl = process.env.WEB_HEALTH_URL || 'https://abcpharmacy.store';
-  const dozzleUrl = process.env.DOZZLE_URL || 'http://103.75.187.86:8888';
+  const dozzleUrl = process.env.DOZZLE_URL || 'https://abcpharmacy.store/dozzle';
+
+  const authHeader = `Basic ${Buffer.from(`${grafanaUser}:${grafanaPassword}`).toString('base64')}`;
 
   console.log('[ServerHealth] 🔍 Bắt đầu thu thập chỉ số viễn trắc server & API...');
 
   // 1. Kiểm tra liveness trực tiếp song song các endpoint
   const endpointChecksPromise = Promise.all([
-    checkEndpoint('Website Frontend', webUrl),
-    checkEndpoint('API Gateway Cổng 4000', apiGatewayMetricsUrl),
-    checkEndpoint('Grafana Dashboard Cổng 3001', grafanaUrl),
-    checkEndpoint('Dozzle Logs Cổng 8888', dozzleUrl),
+    checkEndpoint('Website Frontend (Cloudflare WAF)', webUrl),
+    checkEndpoint('API Gateway Microservices', apiGatewayUrl),
+    checkEndpoint('Grafana Dashboard', grafanaUrl),
+    checkEndpoint('Dozzle Real-time Logs', dozzleUrl),
   ]);
 
   // 2. Thu thập chỉ số viễn trắc từ Prometheus (qua Grafana Proxy)
@@ -182,7 +198,7 @@ export async function collectServerHealth(): Promise<ServerHealthMetrics> {
 
   const promEntries = Object.entries(promQueries);
   const promResults = await Promise.all(
-    promEntries.map(([_, query]) => queryPrometheusViaGrafana(grafanaUrl, query))
+    promEntries.map(([_, query]) => queryPrometheusViaGrafana(grafanaUrl, query, authHeader))
   );
 
   const promMap: Record<string, any[]> = {};
@@ -252,10 +268,10 @@ export async function collectServerHealth(): Promise<ServerHealthMetrics> {
     };
   }
 
-  // Fallback: Quét trực tiếp Prometheus text metrics từ cổng 4000
-  console.warn('[ServerHealth] ⚠️ Không kết nối được Prometheus qua Grafana, đang chuyển sang Fallback cổng 4000...');
+  // Fallback: Quét trực tiếp Prometheus text metrics từ API Gateway
+  console.warn('[ServerHealth] ⚠️ Không kết nối được Prometheus qua Grafana, đang chuyển sang Fallback API Gateway...');
   try {
-    const rawMetricsRes = await fetchWithTimeout(apiGatewayMetricsUrl, {}, 5000);
+    const rawMetricsRes = await fetchWithTimeout(apiGatewayUrl, {}, 5000);
     if (rawMetricsRes.ok) {
       const text = await rawMetricsRes.text();
 
@@ -448,7 +464,7 @@ export function analyzeServerHealth(metrics: ServerHealthMetrics): ServerHealthA
     );
   }
   recommendations.push(
-    '📊 **Kiểm tra trực quan:** Có thể truy cập Grafana Dashboard tại `http://103.75.187.86:3001` và Dozzle log tại `http://103.75.187.86:8888` để kiểm tra chi tiết theo thời gian thực.'
+    '📊 **Kiểm tra trực quan:** Có thể truy cập Grafana Dashboard tại `https://abcpharmacy.store/grafana` và Dozzle log tại `https://abcpharmacy.store/dozzle` để kiểm tra chi tiết theo thời gian thực.'
   );
 
   return {
@@ -522,7 +538,7 @@ export function formatServerHealthDiscordPayload(analysis: ServerHealthAnalysis)
       {
         name: '🔗 TRUY CẬP HỆ THỐNG GIÁM SÁT',
         value:
-          '• 📊 [Grafana Dashboard (Live KPIs)](http://103.75.187.86:3001)\n• 📜 [Dozzle Real-time Logs](http://103.75.187.86:8888)\n• 🏥 [ABC Pharmacy Website](https://abcpharmacy.store)',
+          '• 📊 [Grafana Dashboard (Live KPIs)](https://abcpharmacy.store/grafana)\n• 📜 [Dozzle Real-time Logs](https://abcpharmacy.store/dozzle)\n• 🏥 [ABC Pharmacy Website](https://abcpharmacy.store)',
         inline: false,
       },
     ],
@@ -575,7 +591,7 @@ export async function sendSystemNotification(content: string): Promise<boolean> 
 /**
  * Gửi Báo cáo Sức khỏe Server & Alert vào Kênh Monitoring (mặc định) hoặc Channel chỉ định
  */
-export async function sendDailyServerHealthReport(targetChannelId?: string): Promise<boolean> {
+export async function sendDailyServerHealthReport(targetChannelId?: string, force = false): Promise<boolean> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   const monitoringChannelId = targetChannelId || process.env.MONITORING_CHANNEL_ID || '1564279015693615134';
 
@@ -588,33 +604,35 @@ export async function sendDailyServerHealthReport(targetChannelId?: string): Pro
 
   console.log(`[ServerHealth] 🎯 Chuẩn bị gửi báo cáo sức khỏe server tới kênh monitoring: ${monitoringChannelId} (Ngày: ${dateStr})...`);
 
-  // Kiểm tra Idempotency trên kênh monitoring theo ngày hôm nay
-  try {
-    const messagesRes = await fetch(`https://discord.com/api/v10/channels/${monitoringChannelId}/messages?limit=30`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-    if (messagesRes.ok) {
-      const messages = (await messagesRes.json()) as any[];
-      const alreadySent = messages.some(
-        (m) =>
-          (m.content?.includes('THÔNG BÁO SỨC KHỎE SERVER') &&
-            (m.content?.includes(dateStr) || m.content?.includes(dateStrDash))) ||
-          m.embeds?.some(
-            (e: any) =>
-              e.title?.includes('BÁO CÁO SỨC KHỎE SERVER') &&
-              (m.content?.includes(dateStr) ||
-                m.content?.includes(dateStrDash) ||
-                e.title?.includes(dateStr) ||
-                e.title?.includes(dateStrDash))
-          )
-      );
-      if (alreadySent) {
-        console.log(`[ServerHealth] ℹ️ Báo cáo sức khỏe server ngày "${dateStr}" đã được gửi vào kênh monitoring (${monitoringChannelId}) rồi. Bỏ qua để tránh lặp!`);
-        return true;
+  // Kiểm tra Idempotency trên kênh monitoring theo ngày hôm nay (bỏ qua nếu force = true)
+  if (!force) {
+    try {
+      const messagesRes = await fetch(`https://discord.com/api/v10/channels/${monitoringChannelId}/messages?limit=30`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      });
+      if (messagesRes.ok) {
+        const messages = (await messagesRes.json()) as any[];
+        const alreadySent = messages.some(
+          (m) =>
+            (m.content?.includes('THÔNG BÁO SỨC KHỎE SERVER') &&
+              (m.content?.includes(dateStr) || m.content?.includes(dateStrDash))) ||
+            m.embeds?.some(
+              (e: any) =>
+                e.title?.includes('BÁO CÁO SỨC KHỎE SERVER') &&
+                (m.content?.includes(dateStr) ||
+                  m.content?.includes(dateStrDash) ||
+                  e.title?.includes(dateStr) ||
+                  e.title?.includes(dateStrDash))
+            )
+        );
+        if (alreadySent) {
+          console.log(`[ServerHealth] ℹ️ Báo cáo sức khỏe server ngày "${dateStr}" đã được gửi vào kênh monitoring (${monitoringChannelId}) rồi. Bỏ qua để tránh lặp!`);
+          return true;
+        }
       }
+    } catch (err) {
+      console.warn('[ServerHealth] Không kiểm tra được tin nhắn cũ, tiếp tục gửi:', err);
     }
-  } catch (err) {
-    console.warn('[ServerHealth] Không kiểm tra được tin nhắn cũ, tiếp tục gửi:', err);
   }
 
   // 1. Thu thập dữ liệu
@@ -648,7 +666,8 @@ export async function sendDailyServerHealthReport(targetChannelId?: string): Pro
 
 // Chạy trực tiếp qua CLI (test nhanh)
 if (process.argv[1]?.includes('serverHealth.ts')) {
-  sendDailyServerHealthReport()
+  const force = process.argv.includes('--force');
+  sendDailyServerHealthReport(undefined, force)
     .then((success) => {
       console.log(`[ServerHealth] Kết quả thực thi: ${success ? 'THÀNH CÔNG' : 'THẤT BẠI'}`);
       process.exit(success ? 0 : 1);
