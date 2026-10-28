@@ -539,70 +539,82 @@ export function formatServerHealthDiscordPayload(analysis: ServerHealthAnalysis)
 }
 
 /**
- * Gửi Báo cáo Sức khỏe Server & Alert vào Thread chỉ định hoặc Thread hôm nay
+ * Gửi thông báo cảnh báo hệ thống nhanh tới kênh Monitoring
  */
-export async function sendDailyServerHealthReport(targetThreadId?: string): Promise<boolean> {
+export async function sendSystemNotification(content: string): Promise<boolean> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  const channelId = process.env.CHANNEL_ID || '1504851139441459241';
-  const guildId = process.env.GUILD_ID || '1504851139005517995';
+  const monitoringChannelId = process.env.MONITORING_CHANNEL_ID || '1564279015693615134';
+
+  if (!botToken) {
+    console.warn('[SystemAlert] Thiếu DISCORD_BOT_TOKEN!');
+    return false;
+  }
+
+  try {
+    const res = await fetch(`https://discord.com/api/v10/channels/${monitoringChannelId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[SystemAlert] Gửi cảnh báo thất bại (HTTP ${res.status}): ${errText}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[SystemAlert] Lỗi khi gửi thông báo hệ thống:', err);
+    return false;
+  }
+}
+
+/**
+ * Gửi Báo cáo Sức khỏe Server & Alert vào Kênh Monitoring (mặc định) hoặc Channel chỉ định
+ */
+export async function sendDailyServerHealthReport(targetChannelId?: string): Promise<boolean> {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  const monitoringChannelId = targetChannelId || process.env.MONITORING_CHANNEL_ID || '1564279015693615134';
 
   if (!botToken) {
     throw new Error('Thiếu DISCORD_BOT_TOKEN trong file .env!');
   }
 
-  const threadTitle = new Intl.DateTimeFormat('vi-VN', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
-    .format(new Date())
-    .replace(/\//g, '-');
+  const dateStr = getFormattedDateVN();
+  const dateStrDash = dateStr.replace(/\//g, '-');
 
-  let threadId = targetThreadId;
+  console.log(`[ServerHealth] 🎯 Chuẩn bị gửi báo cáo sức khỏe server tới kênh monitoring: ${monitoringChannelId} (Ngày: ${dateStr})...`);
 
-  // Nếu chưa truyền threadId, tìm thread ngày hôm nay
-  if (!threadId) {
-    try {
-      const activeRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/threads/active`, {
-        headers: { Authorization: `Bot ${botToken}` },
-      });
-      if (activeRes.ok) {
-        const activeData = (await activeRes.json()) as any;
-        const found = activeData.threads?.find(
-          (t: any) => t.name === threadTitle && (!t.parent_id || t.parent_id === channelId)
-        );
-        if (found) threadId = found.id;
+  // Kiểm tra Idempotency trên kênh monitoring theo ngày hôm nay
+  try {
+    const messagesRes = await fetch(`https://discord.com/api/v10/channels/${monitoringChannelId}/messages?limit=30`, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    if (messagesRes.ok) {
+      const messages = (await messagesRes.json()) as any[];
+      const alreadySent = messages.some(
+        (m) =>
+          (m.content?.includes('THÔNG BÁO SỨC KHỎE SERVER') &&
+            (m.content?.includes(dateStr) || m.content?.includes(dateStrDash))) ||
+          m.embeds?.some(
+            (e: any) =>
+              e.title?.includes('BÁO CÁO SỨC KHỎE SERVER') &&
+              (m.content?.includes(dateStr) ||
+                m.content?.includes(dateStrDash) ||
+                e.title?.includes(dateStr) ||
+                e.title?.includes(dateStrDash))
+          )
+      );
+      if (alreadySent) {
+        console.log(`[ServerHealth] ℹ️ Báo cáo sức khỏe server ngày "${dateStr}" đã được gửi vào kênh monitoring (${monitoringChannelId}) rồi. Bỏ qua để tránh lặp!`);
+        return true;
       }
-    } catch (err) {
-      console.warn('[ServerHealth] Lỗi khi tìm active threads:', err);
     }
-  }
-
-  const destChannelId = threadId || channelId;
-  console.log(`[ServerHealth] 🎯 Chuẩn bị gửi báo cáo sức khỏe server tới ID: ${destChannelId} (Thread: ${threadTitle})...`);
-
-  // Kiểm tra Idempotency nếu gửi vào Thread
-  if (threadId) {
-    try {
-      const messagesRes = await fetch(`https://discord.com/api/v10/channels/${threadId}/messages?limit=20`, {
-        headers: { Authorization: `Bot ${botToken}` },
-      });
-      if (messagesRes.ok) {
-        const messages = (await messagesRes.json()) as any[];
-        const alreadySent = messages.some(
-          (m) =>
-            m.content?.includes('THÔNG BÁO SỨC KHỎE SERVER') ||
-            m.embeds?.some((e: any) => e.title?.includes('BÁO CÁO SỨC KHỎE SERVER'))
-        );
-        if (alreadySent) {
-          console.log(`[ServerHealth] ℹ️ Báo cáo sức khỏe server đã được gửi vào thread "${threadTitle}" hôm nay rồi. Bỏ qua để tránh lặp!`);
-          return true;
-        }
-      }
-    } catch (err) {
-      console.warn('[ServerHealth] Không kiểm tra được tin nhắn cũ, tiếp tục gửi:', err);
-    }
+  } catch (err) {
+    console.warn('[ServerHealth] Không kiểm tra được tin nhắn cũ, tiếp tục gửi:', err);
   }
 
   // 1. Thu thập dữ liệu
@@ -614,8 +626,8 @@ export async function sendDailyServerHealthReport(targetThreadId?: string): Prom
   // 3. Chuẩn bị payload Discord
   const payload = formatServerHealthDiscordPayload(analysis);
 
-  // 4. Gửi tin nhắn qua REST API
-  const res = await fetch(`https://discord.com/api/v10/channels/${destChannelId}/messages`, {
+  // 4. Gửi tin nhắn qua REST API vào kênh monitoring
+  const res = await fetch(`https://discord.com/api/v10/channels/${monitoringChannelId}/messages`, {
     method: 'POST',
     headers: {
       Authorization: `Bot ${botToken}`,
@@ -630,7 +642,7 @@ export async function sendDailyServerHealthReport(targetThreadId?: string): Prom
     return false;
   }
 
-  console.log(`[ServerHealth] ✅ Đã gửi thành công Báo cáo sức khỏe Server & Alert tới Discord!`);
+  console.log(`[ServerHealth] ✅ Đã gửi thành công Báo cáo sức khỏe Server & Alert tới kênh monitoring (${monitoringChannelId})!`);
   return true;
 }
 

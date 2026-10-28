@@ -1,40 +1,47 @@
 import 'dotenv/config';
 import cron from 'node-cron';
-import { createDailyStandupThread, remindStandupSubmission, remindWeeklyReport, sendDailyServerHealthReport } from './standup.js';
+import {
+  createDailyStandupThread,
+  remindStandupSubmission,
+  remindWeeklyReport,
+  sendDailyServerHealthReport,
+  sendSystemNotification,
+} from './standup.js';
 
 // Mặc định: Đúng 01:00 sáng mỗi ngày ('0 1 * * *')
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 1 * * *';
 const WEEKLY_REPORT_CRON = process.env.WEEKLY_REPORT_CRON || '0 9 * * 6'; // 09:00 sáng Thứ 7 hàng tuần
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Ho_Chi_Minh';
+const CHANNEL_ID = process.env.CHANNEL_ID || '1504851139441459241';
+const MONITORING_CHANNEL_ID = process.env.MONITORING_CHANNEL_ID || '1564279015693615134';
 
 console.log('--------------------------------------------------');
 console.log('🤖 Discord Daily Stand-up & Server Health Alert Bot');
 console.log(`⏰ Daily Standup & Health Report: "${CRON_SCHEDULE}" (Timezone: ${TIMEZONE})`);
 console.log(`⏰ Weekly Report (Thứ 7): "${WEEKLY_REPORT_CRON}" (Timezone: ${TIMEZONE})`);
-console.log(`🩺 Sức Khỏe Server & Alert: Tự động phân tích & gửi kèm Daily Report`);
-console.log(`📌 Kênh nhận report: ${process.env.CHANNEL_ID || '1504851139441459241'}`);
+console.log(`🩺 Sức Khỏe Server & Alert: Tự động phân tích & gửi tới kênh #monitoring (${MONITORING_CHANNEL_ID})`);
+console.log(`📌 Kênh nhận Daily Standup: ${CHANNEL_ID}`);
+console.log(`📡 Kênh nhận Giám sát & Alert: ${MONITORING_CHANNEL_ID}`);
 console.log('--------------------------------------------------');
 
 // Thiết lập cron job Daily Standup
 cron.schedule(
   CRON_SCHEDULE,
   async () => {
-    console.log(`[Cron] Kích hoạt lúc ${new Date().toLocaleString('vi-VN', { timeZone: TIMEZONE })}`);
     console.log(`[Cron Standup] Kích hoạt lúc ${new Date().toLocaleString('vi-VN', { timeZone: TIMEZONE })}`);
     try {
       await createDailyStandupThread();
     } catch (error) {
-      console.error('[Cron] Lỗi khi thực hiện standup:', error);
       console.error('[Cron Standup] Lỗi khi thực hiện standup:', error);
+      await sendSystemNotification(
+        `🚨 **[CẢNH BÁO HỆ THỐNG BOT]** Lỗi cronjob Daily Standup: \`${error instanceof Error ? error.message : String(error)}\``
+      );
     }
   },
   {
     timezone: TIMEZONE,
   }
 );
-
-
-
 
 // Lịch chạy nhắc nhở nộp bài lúc 21h00 tối hàng ngày
 cron.schedule(
@@ -45,6 +52,9 @@ cron.schedule(
       await remindStandupSubmission();
     } catch (error) {
       console.error('[Cron Reminder] Lỗi khi gửi nhắc nhở:', error);
+      await sendSystemNotification(
+        `🚨 **[CẢNH BÁO HỆ THỐNG BOT]** Lỗi cronjob Reminder 21h: \`${error instanceof Error ? error.message : String(error)}\``
+      );
     }
   },
   { timezone: TIMEZONE }
@@ -59,6 +69,9 @@ cron.schedule(
       await remindWeeklyReport();
     } catch (error) {
       console.error('[Cron Weekly Report] Lỗi khi gửi nhắc nhở báo cáo tuần:', error);
+      await sendSystemNotification(
+        `🚨 **[CẢNH BÁO HỆ THỐNG BOT]** Lỗi cronjob Weekly Report: \`${error instanceof Error ? error.message : String(error)}\``
+      );
     }
   },
   { timezone: TIMEZONE }

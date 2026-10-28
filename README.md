@@ -29,7 +29,7 @@ Bot tự động hóa quy trình Daily Stand-up và nhắc nhở Báo cáo tuầ
    - Đánh giá chất lượng dịch vụ API (Lưu lượng requests, 2xx OK, 4xx Client Error, 5xx Server Error, Độ trễ p95 latency, Heap RAM).
    - **Động cơ phân tích thông minh**: Tự động chẩn đoán sức khỏe, phát hiện bất thường, phân loại cảnh báo (🟢 HEALTHY / 🟡 WARNING / 🔴 CRITICAL).
    - Đưa ra khuyến nghị kỹ thuật hành động cụ thể (Action Plan) cho team Dev/DevOps.
-   - Gửi tự động kèm theo Daily Standup Thread mỗi ngày và có cơ chế chống spam (Idempotency).
+   - **Định tuyến toàn bộ thông báo hệ thống**: Tự động gửi vào kênh riêng **`#monitoring`** (ID: `1564279015693615134`) mỗi ngày và cảnh báo lỗi hệ thống/workflow tự động, có cơ chế chống spam (Idempotency).
 
 ---
 
@@ -41,8 +41,11 @@ Tạo file `.env` dựa trên `.env.example`:
 # Token Bot Discord (Lấy từ Discord Developer Portal)
 DISCORD_BOT_TOKEN=your_bot_token_here
 
-# Channel ID của kênh nhận thông báo (ví dụ #daily-stand-up)
+# Channel ID của kênh nhận Daily Standup (ví dụ #daily-stand-up)
 CHANNEL_ID=1504851139441459241
+
+# Channel ID của kênh nhận thông báo hệ thống & giám sát (ví dụ #monitoring)
+MONITORING_CHANNEL_ID=1564279015693615134
 
 # Server ID (Guild ID)
 GUILD_ID=1504851139005517995
@@ -63,6 +66,7 @@ EXCLUDED_USERS=longnx,truongthanh,trường thành
 Nếu chạy qua **GitHub Actions**, cấu hình trong mục **Repository Settings -> Secrets and variables -> Actions**:
 - `DISCORD_BOT_TOKEN` (bắt buộc)
 - `CHANNEL_ID` (tùy chọn, mặc định đã gán sẵn trong workflow)
+- `MONITORING_CHANNEL_ID` (tùy chọn, mặc định đã gán sẵn `1564279015693615134`)
 - `GUILD_ID` (tùy chọn, mặc định đã gán sẵn trong workflow)
 - `EXCLUDED_USERS` (tùy chọn, nếu muốn bổ sung thêm User ID hoặc username khác)
 

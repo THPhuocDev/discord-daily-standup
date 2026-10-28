@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import process from 'process';
-import { sendDailyServerHealthReport } from './serverHealth.js';
+import { sendDailyServerHealthReport, sendSystemNotification } from './serverHealth.js';
 
 interface CreateThreadResponse {
   id: string;
@@ -304,11 +304,11 @@ export async function createDailyStandupThread(): Promise<string | undefined> {
       console.log(
         `[Stand-up] ℹ️ Thread "${threadTitle}" ngày hôm nay đã được tạo rồi (ID: ${existingThread.id}). Không cần tạo lại!`
       );
-      // Đảm bảo báo cáo sức khỏe server & alert được gửi vào thread nếu chưa có
+      // Đảm bảo báo cáo sức khỏe server & alert được gửi vào kênh monitoring nếu chưa có
       try {
-        await sendDailyServerHealthReport(existingThread.id);
+        await sendDailyServerHealthReport();
       } catch (healthErr) {
-        console.error('[Stand-up] Lỗi khi gửi báo cáo sức khỏe server vào existing thread:', healthErr);
+        console.error('[Stand-up] Lỗi khi gửi báo cáo sức khỏe server vào kênh monitoring:', healthErr);
       }
       return existingThread.id;
     }
@@ -332,7 +332,9 @@ export async function createDailyStandupThread(): Promise<string | undefined> {
 
   if (!threadResponse.ok) {
     const errText = await threadResponse.text();
-    throw new Error(`Tạo thread thất bại (HTTP ${threadResponse.status}): ${errText}`);
+    const errMsg = `Tạo thread standup thất bại (HTTP ${threadResponse.status}): ${errText}`;
+    await sendSystemNotification(`🚨 **[CẢNH BÁO HỆ THỐNG BOT]** ${errMsg}`);
+    throw new Error(errMsg);
   }
 
   const threadData = (await threadResponse.json()) as CreateThreadResponse;
@@ -382,11 +384,11 @@ export async function createDailyStandupThread(): Promise<string | undefined> {
 
   console.log(`[Stand-up] ✅ Đã gửi tin nhắn mẫu vào thread thành công!`);
 
-  // 4. Tự động kiểm tra sức khỏe server, phát hiện alert và gửi báo cáo phân tích vào thread
+  // 4. Tự động kiểm tra sức khỏe server, phát hiện alert và gửi báo cáo phân tích vào kênh monitoring
   try {
-    await sendDailyServerHealthReport(threadId);
+    await sendDailyServerHealthReport();
   } catch (healthErr) {
-    console.error('[Stand-up] Lỗi khi gửi báo cáo sức khỏe server:', healthErr);
+    console.error('[Stand-up] Lỗi khi gửi báo cáo sức khỏe server vào kênh monitoring:', healthErr);
   }
 
   return threadId;
@@ -600,7 +602,9 @@ export async function remindWeeklyReport(): Promise<void> {
 
   if (!threadResponse.ok) {
     const errText = await threadResponse.text();
-    throw new Error(`Tạo thread Weekly Report thất bại (HTTP ${threadResponse.status}): ${errText}`);
+    const errMsg = `Tạo thread Weekly Report thất bại (HTTP ${threadResponse.status}): ${errText}`;
+    await sendSystemNotification(`🚨 **[CẢNH BÁO HỆ THỐNG BOT]** ${errMsg}`);
+    throw new Error(errMsg);
   }
 
   const threadData = (await threadResponse.json()) as CreateThreadResponse;
@@ -664,8 +668,8 @@ export async function remindWeeklyReport(): Promise<void> {
   console.log(`[Weekly-Report] ✅ Đã gửi tin nhắn mẫu Báo cáo tuần vào thread thành công!`);
 }
 
-// Export hàm gửi báo cáo sức khỏe server để các module khác có thể tái sử dụng
-export { sendDailyServerHealthReport };
+// Export các hàm hỗ trợ để các module khác có thể tái sử dụng
+export { sendDailyServerHealthReport, sendSystemNotification };
 
 // Nếu chạy trực tiếp file này (ví dụ `npm run test-run`, `npm run test-reminder`, `npm run test-weekly`, `npm run test-server-health`)
 if (process.argv[1]?.includes('standup.ts')) {

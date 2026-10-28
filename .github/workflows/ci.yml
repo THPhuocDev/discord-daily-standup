@@ -32,3 +32,14 @@ jobs:
             cd discord-daily-standup
           fi
           npm run build
+
+      - name: Alert failure to Discord
+        if: failure()
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          MONITORING_CHANNEL_ID: ${{ secrets.MONITORING_CHANNEL_ID || '1564279015693615134' }}
+        run: |
+          curl -s -X POST "https://discord.com/api/v10/channels/${MONITORING_CHANNEL_ID}/messages" \
+            -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"🚨 **[CẢNH BÁO HỆ THỐNG CI]** Workflow \`${{ github.workflow }}\` vừa bị lỗi! Vui lòng kiểm tra log tại: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
