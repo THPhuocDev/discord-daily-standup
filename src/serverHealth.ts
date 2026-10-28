@@ -346,8 +346,8 @@ export function analyzeServerHealth(metrics: ServerHealthMetrics): ServerHealthA
   for (const ep of metrics.endpointChecks) {
     if (ep.status === 'DOWN') {
       criticalAlerts.push(`🔴 Dịch vụ **${ep.name}** (${ep.url}) KHÔNG PHẢN HỒI!`);
-    } else if (ep.responseTimeMs > 2500) {
-      warningAlerts.push(`🟡 Dịch vụ **${ep.name}** phản hồi chậm (${ep.responseTimeMs}ms > 2500ms)`);
+    } else if (ep.responseTimeMs > 5000) {
+      warningAlerts.push(`🟡 Dịch vụ **${ep.name}** phản hồi chậm (${ep.responseTimeMs}ms > 5000ms)`);
     }
   }
 
